@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AssetAgent2 资产风险仪表盘</title>
+<style>
+  :root{
+    --text:#1A1B1C; --sec:#6B7280; --line:#E4E3DD; --card:#fff;
+    --accent:#2F6FB3; --accent-bg:rgba(47,111,179,0.10);
+    --ok:#188038; --warn:#E8710A; --crit:#D93025; --info:#1A73E8;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'PingFang SC','Microsoft YaHei',Arial,sans-serif;background:#F4F3EE;color:var(--text);padding:20px;line-height:1.5}
+  h1{font-size:20px;margin-bottom:4px}
+  .sub{color:var(--sec);font-size:13px;margin-bottom:16px}
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  .tab{padding:8px 16px;border-radius:10px;background:var(--card);border:1px solid var(--line);cursor:pointer;font-size:14px;color:var(--sec)}
+  .tab.active{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+  .cards{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+  .card{flex:1 1 130px;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .card .k{font-size:12px;color:var(--sec)}
+  .card .v{font-size:24px;font-weight:600;margin-top:4px}
+  .card .v small{font-size:12px;color:var(--sec);font-weight:400}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:13px;margin-bottom:20px}
+  th,td{padding:8px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  th{background:#f1f3f4;font-size:12px;color:var(--sec);white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+  .sev{font-weight:700}
+  .sev-CRITICAL{color:var(--crit)} .sev-HIGH{color:var(--warn)}
+  .sev-MEDIUM{color:#F9AB00} .sev-LOW,.sev-NONE{color:var(--info)}
+  .badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600}
+  .badge.ok{background:rgba(24,128,56,.12);color:var(--ok)}
+  .badge.warning{background:rgba(232,113,10,.12);color:var(--warn)}
+  .badge.info{background:rgba(26,115,232,.10);color:var(--info)}
+  .badge.risk{background:var(--accent-bg);color:var(--accent)}
+  .btn{display:inline-block;padding:8px 16px;border-radius:10px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-size:13px;margin-right:8px}
+  .btn.ghost{background:var(--card);color:var(--text);border:1px solid var(--line)}
+  .btn:hover{opacity:.9}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+  .muted{color:var(--sec);font-size:12px}
+  .diff-add{color:var(--ok);font-weight:600}
+  .diff-rm{color:var(--crit);font-weight:600}
+  .empty{padding:40px;text-align:center;color:var(--sec);font-size:14px}
+  .evidence{font-size:12px;color:var(--sec);word-break:break-all}
+  select,input{padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:#fff;color:var(--text)}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#202124;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;display:none;z-index:9}
+  @media (max-width:560px){ body{padding:12px} .card{flex:1 1 100%} th,td{padding:6px 8px} }
+</style>
+</head>
+<body>
+<h1>AssetAgent2 资产风险仪表盘</h1>
+<div class="sub">资产自动发现 + 漏洞验证 ｜ 数据来源：本地 data/assets.db（agent2）+ data/vulns.db（agent1，只读匹配）<br><span class="muted">服务器模式：若服务启用了 Token 认证，请用 <b>http://地址:端口/?token=你的Token</b> 打开本页</span></div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="overview">概览</div>
+  <div class="tab" data-tab="hosts">资产</div>
+  <div class="tab" data-tab="matches">漏洞</div>
+  <div class="tab" data-tab="findings">主动发现</div>
+  <div class="tab" data-tab="checks">检查</div>
+  <div class="tab" data-tab="jobs">任务</div>
+  <div class="tab" data-tab="snapshots">快照差异</div>
+</div>
+
+<div id="view-overview">
+  <div class="cards" id="stat-cards"></div>
+  <div class="panel">
+    <div style="font-size:14px;font-weight:600;margin-bottom:8px">最近扫描日志</div>
+    <div id="scan-log"></div>
+  </div>
+  <div class="panel">
+    <div style="font-size:14px;font-weight:600;margin-bottom:8px">操作</div>
+    <button class="btn" onclick="genReport()">生成 HTML 报告</button>
+    <button class="btn ghost" onclick="doExport()">导出 CSV</button>
+    <button class="btn ghost" onclick="saveSnapshot()">保存快照</button>
+    <span class="muted" id="op-msg"></span>
+  </div>
+</div>
+
+<div id="view-hosts" style="display:none"></div>
+<div id="view-matches" style="display:none"></div>
+<div id="view-findings" style="display:none"></div>
+<div id="view-checks" style="display:none"></div>
+<div id="view-jobs" style="display:none"></div>
+<div id="view-snapshots" style="display:none"></div>
+<div id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+  function $(s){ return document.querySelector(s); }
+  function el(tag, attrs, html){
+    var e=document.createElement(tag);
+    if(attrs) for(var k in attrs) e.setAttribute(k,attrs[k]);
+    if(html!=null) e.innerHTML=html;
+    return e;
+  }
+  function fmt(v){ return v==null||v===''?'-':v; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function sevTag(s){ return '<span class="sev sev-'+(s||'NONE').toUpperCase()+'">'+esc(s||'N/A')+'</span>'; }
+  function badge(s){ return '<span class="badge '+s+'">'+s+'</span>'; }
+  function toast(msg){ var t=$('#toast'); t.textContent=msg; t.style.display='block'; setTimeout(function(){t.style.display='none';},2600); }
+
+  function getToken(){
+    var m=location.search.match(/[?&]token=([^&]+)/);
+    if(m){ try{ localStorage.setItem('agent2_token', m[1]); }catch(e){} return m[1]; }
+    try{ return localStorage.getItem('agent2_token'); }catch(e){ return null; }
+  }
+  function api(url, method, body){
+    var opt={method:method||'GET'};
+    var t=getToken();
+    opt.headers={};
+    if(t){ opt.headers['Authorization']='Bearer '+t; }
+    if(body){ opt.headers['Content-Type']='application/json'; opt.body=JSON.stringify(body); }
+    return fetch(url,opt).then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||r.status); return j; }); });
+  }
+
+  // ---- 概览 ----
+  function loadOverview(){
+    api('/api/stats').then(function(s){
+      var cards=[
+        ['发现主机', s.hosts], ['开放服务', s.services], ['指纹产品', s.fingerprints],
+        ['匹配漏洞', s.matches], ['KEV 已知利用', s.kev], ['主动发现', s.findings],
+        ['安全检查项', s.checks], ['风险资产', s.risky_hosts]
+      ];
+      $('#stat-cards').innerHTML=cards.map(function(c){
+        return '<div class="card"><div class="k">'+c[0]+'</div><div class="v">'+c[1]+'</div></div>';
+      }).join('');
+      var sev=s.by_severity||{};
+      var sevRow='<div class="row">'+['CRITICAL','HIGH','MEDIUM','LOW'].map(function(x){
+        return '<span class="badge sev-'+x+'">'+x+': '+(sev[x]||0)+'</span>';
+      }).join('')+'</div>';
+      $('#stat-cards').insertAdjacentHTML('beforeend', sevRow);
+    }).catch(function(e){ $('#stat-cards').innerHTML='<div class="empty">加载失败: '+esc(e.message)+'</div>'; });
+
+    api('/api/scans').then(function(rows){
+      if(!rows.length){ $('#scan-log').innerHTML='<span class="muted">暂无扫描记录，先运行 python main.py run</span>'; return; }
+      $('#scan-log').innerHTML='<table><tr><th>时间</th><th>类型</th><th>目标</th><th>状态</th><th>详情</th></tr>'+
+        rows.map(function(r){
+          return '<tr><td>'+esc(r.finished_at||'')+'</td><td>'+esc(r.kind||'')+'</td><td>'+esc(r.target||'')+'</td><td>'+esc(r.status||'')+'</td><td>'+esc(r.detail||'')+'</td></tr>';
+        }).join('')+'</table>';
+    }).catch(function(){});
+  }
+
+  // ---- 资产 ----
+  function loadHosts(){
+    api('/api/hosts').then(function(rows){
+      var v=$('#view-hosts');
+      if(!rows.length){ v.innerHTML='<div class="empty">暂无资产。先运行：python main.py discover subdomains / ports</div>'; return; }
+      var h='<table><tr><th>主机</th><th>IP</th><th>服务</th><th>指纹</th><th>漏洞</th><th>C/H</th><th>KEV</th><th>风险</th><th></th></tr>';
+      rows.forEach(function(r){
+        h+='<tr><td>'+esc(r.host)+'</td><td>'+esc(r.ip)+'</td><td>'+r.services+'</td><td>'+r.fingerprints+'</td><td>'+r.vulns+'</td><td>'+r.critical+'/'+r.high+'</td><td>'+r.kev+'</td><td><span class="badge risk">'+esc(r.risk_level)+' '+r.risk+'</span></td><td><a href="#" onclick="showHost('+r.id+',event)">详情</a></td></tr>';
+      });
+      h+='</table><div id="host-detail"></div>';
+      v.innerHTML=h;
+    }).catch(function(e){ $('#view-hosts').innerHTML='<div class="empty">'+esc(e.message)+'</div>'; });
+  }
+
+  window.showHost=function(id,ev){
+    if(ev) ev.preventDefault();
+    api('/api/hosts?id='+id).then(function(d){
+      var box=$('#host-detail');
+      var svc='<h3 style="margin:16px 0 8px;font-size:15px">开放服务</h3><table><tr><th>端口</th><th>服务</th><th>Banner</th><th>标题</th><th>技术栈</th></tr>'+
+        d.services.map(function(s){
+          var tech=(s.tech||[]).map(function(t){return esc(t.product)+' '+(t.version||'');}).join(', ')||'-';
+          return '<tr><td>'+s.port+'/'+s.proto+'</td><td>'+esc(s.service||'-')+'</td><td class="evidence">'+esc((s.banner||'').slice(0,80))+'</td><td>'+esc(s.http_title||'-')+'</td><td>'+tech+'</td></tr>';
+        }).join('')+'</table>';
+      var fp='<h3 style="margin:16px 0 8px;font-size:15px">产品指纹</h3><table><tr><th>产品</th><th>版本</th><th>来源</th></tr>'+
+        d.fingerprints.map(function(f){return '<tr><td>'+esc(f.product)+'</td><td>'+esc(f.version||'*')+'</td><td>'+esc(f.source||'')+'</td></tr>';}).join('')+'</table>';
+      var ms='<h3 style="margin:16px 0 8px;font-size:15px">漏洞匹配</h3><table><tr><th>CVE</th><th>级别</th><th>CVSS</th><th>匹配级别</th><th>证据</th></tr>'+
+        d.matches.map(function(m){return '<tr><td>'+esc(m.cve_id)+(m.known_exploited?' <span class="badge warning">KEV</span>':'')+'</td><td>'+sevTag(m.severity)+'</td><td>'+fmt(m.cvss_score)+'</td><td>'+esc(m.match_level)+'</td><td class="evidence">'+esc(JSON.stringify(m.evidence||{}).slice(0,200))+'</td></tr>';}).join('')+'</table>';
+      var fs='<h3 style="margin:16px 0 8px;font-size:15px">主动漏洞发现</h3><table><tr><th>级别</th><th>漏洞</th><th>证据</th><th>修复建议</th></tr>'+
+        (d.findings||[]).map(function(f){return '<tr><td>'+sevTag(f.severity)+'</td><td>'+esc(f.name)+'</td><td class="evidence">'+esc(f.evidence)+'</td><td class="evidence">'+esc(f.remediation)+'</td></tr>';}).join('')+'</table>';
+      var cs='<h3 style="margin:16px 0 8px;font-size:15px">安全检查</h3><table><tr><th>检查项</th><th>状态</th><th>详情</th></tr>'+
+        d.checks.map(function(c){return '<tr><td>'+esc(c.check_name)+'</td><td>'+badge(c.status)+'</td><td>'+esc(c.detail)+'</td></tr>';}).join('')+'</table>';
+      box.innerHTML='<div class="panel">'+svc+fp+ms+fs+cs+'</div>';
+      box.scrollIntoView({behavior:'smooth'});
+    }).catch(function(e){ toast('加载失败: '+e.message); });
+  };
+
+  // ---- 漏洞 ----
+  function loadMatches(){
+    api('/api/matches').then(function(rows){
+      var v=$('#view-matches');
+      if(!rows.length){ v.innerHTML='<div class="empty">暂无匹配漏洞。先运行 python main.py verify match</div>'; return; }
+      v.innerHTML='<table><tr><th>CVE</th><th>级别</th><th>CVSS</th><th>主机</th><th>匹配级别</th><th>证据</th></tr>'+
+        rows.map(function(m){
+          var ev=esc(JSON.stringify(m.evidence||{}).slice(0,220));
+          return '<tr><td>'+esc(m.cve_id)+(m.known_exploited?' <span class="badge warning">KEV</span>':'')+'</td><td>'+sevTag(m.severity)+'</td><td>'+fmt(m.cvss_score)+'</td><td>'+esc(m.host_name)+'</td><td>'+esc(m.match_level)+'</td><td class="evidence">'+ev+'</td></tr>';
+        }).join('')+'</table>';
+    }).catch(function(e){ $('#view-matches').innerHTML='<div class="empty">'+esc(e.message)+'</div>'; });
+  }
+
+  // ---- 主动发现 ----
+  function loadFindings(){
+    api('/api/findings').then(function(rows){
+      var v=$('#view-findings');
+      if(!rows.length){ v.innerHTML='<div class="empty">暂无主动发现。先运行 python main.py scan --target 你的范围</div>'; return; }
+      v.innerHTML='<table><tr><th>级别</th><th>漏洞</th><th>资产</th><th>证据</th><th>修复建议</th></tr>'+
+        rows.map(function(f){
+          return '<tr><td>'+sevTag(f.severity)+'</td><td>'+esc(f.name)+'</td><td>'+esc(f.host_name)+'</td><td class="evidence">'+esc(f.evidence)+'</td><td class="evidence">'+esc(f.remediation)+'</td></tr>';
+        }).join('')+'</table>';
+    }).catch(function(e){ $('#view-findings').innerHTML='<div class="empty">'+esc(e.message)+'</div>'; });
+  }
+
+  // ---- 检查 ----
+  function loadChecks(){
+    api('/api/checks').then(function(rows){
+      var v=$('#view-checks');
+      if(!rows.length){ v.innerHTML='<div class="empty">暂无检查结果。先运行 python main.py verify checks</div>'; return; }
+      v.innerHTML='<table><tr><th>主机</th><th>检查项</th><th>状态</th><th>详情</th></tr>'+
+        rows.map(function(c){return '<tr><td>'+esc(c.host_name)+'</td><td>'+esc(c.check_name)+'</td><td>'+badge(c.status)+'</td><td>'+esc(c.detail)+'</td></tr>';}).join('')+'</table>';
+    }).catch(function(e){ $('#view-checks').innerHTML='<div class="empty">'+esc(e.message)+'</div>'; });
+  }
+
+  // ---- 定时任务 ----
+  function loadJobs(){
+    api('/api/jobs').then(function(rows){
+      var v=$('#view-jobs');
+      var form='<div class="panel"><div style="font-size:14px;font-weight:600;margin-bottom:8px">新建定时任务</div>'+
+        '<div class="row"><input id="j-name" placeholder="任务名，如 每日核心资产" style="flex:1 1 160px">'+
+        '<input id="j-targets" placeholder="目标，逗号分隔（须在授权范围）" style="flex:2 1 260px">'+
+        '<input id="j-schedule" placeholder="周期: 0 2 * * * 或 interval:6h" style="flex:1 1 180px">'+
+        '<input id="j-ports" placeholder="端口,默认 80,443,8080,8443,22" style="flex:1 1 180px">'+
+        '<button class="btn" onclick="addJob()">创建</button></div>'+
+        '<div class="muted">周期示例：每天 02:00 = "0 2 * * *"；每 6 小时 = "interval:6h"；每 30 分钟 = "*/30 * * * *"</div></div>';
+      if(!rows.length){
+        v.innerHTML=form+'<div class="empty">暂无定时任务。创建后服务会自动按周期扫描并入库。</div>';
+        return;
+      }
+      var h=form+'<table><tr><th>任务</th><th>目标</th><th>周期</th><th>状态</th><th>上次运行</th><th>下次运行</th><th>结果</th><th>操作</th></tr>';
+      rows.forEach(function(j){
+        var status=j.status==='running'?'<span class="badge warning">运行中</span>'
+          :(j.enabled?'<span class="badge ok">启用</span>':'<span class="badge info">停用</span>');
+        var sum=j.last_summary||{};
+        var res=(j.status==='error')
+          ?'<span class="sev sev-HIGH">失败</span>'+(j.last_error?' '+esc(String(j.last_error).slice(0,40)):'')
+          :(j.last_run?'主机 '+sum.hosts+' · CVE '+sum.matches+' · 发现 '+sum.findings:'<span class="muted">-</span>');
+        h+='<tr><td>'+esc(j.name)+'</td><td>'+esc((j.targets||[]).join(', '))+'</td><td>'+esc(j.schedule)+'</td><td>'+status+
+          '</td><td>'+esc(j.last_run||'-')+'</td><td>'+esc(j.next_run||'-')+'</td><td>'+res+'</td>'+
+          '<td><button class="btn" onclick="runJob(\''+esc(j.name)+'\')">立即运行</button>'+
+          '<button class="btn ghost" onclick="toggleJob(\''+esc(j.name)+'\','+(j.enabled?'0':'1')+')">'+(j.enabled?'停用':'启用')+'</button>'+
+          '<button class="btn ghost" onclick="delJob(\''+esc(j.name)+'\')">删除</button></td></tr>';
+      });
+      h+='</table>';
+      v.innerHTML=h;
+    }).catch(function(e){ $('#view-jobs').innerHTML='<div class="empty">任务功能需服务器模式：'+esc(e.message)+'</div>'; });
+  }
+  window.addJob=function(){
+    var targets=$('#j-targets').value.trim();
+    if(!$('#j-name').value.trim()||!targets||!$('#j-schedule').value.trim()){ toast('请填写任务名/目标/周期'); return; }
+    api('/api/jobs','POST',{name:$('#j-name').value.trim(),targets:targets.split(','),schedule:$('#j-schedule').value.trim(),ports:$('#j-ports').value.trim()||'80,443,8080,8443,22'})
+      .then(function(){ toast('任务已创建'); loadJobs(); })
+      .catch(function(e){ toast('创建失败: '+e.message); });
+  };
+  window.runJob=function(name){ api('/api/jobs/run?id='+encodeURIComponent(name),'POST').then(function(){ toast('已触发: '+name); setTimeout(loadJobs,1500); }).catch(function(e){ toast('失败: '+e.message); }); };
+  window.toggleJob=function(name,en){ api('/api/jobs/enable?id='+encodeURIComponent(name)+'&enabled='+en,'POST').then(function(){ toast(en?'已启用':'已停用'); loadJobs(); }).catch(function(e){ toast('失败: '+e.message); }); };
+  window.delJob=function(name){ if(!confirm('删除任务 '+name+' ？')) return; api('/api/jobs?id='+encodeURIComponent(name),'DELETE').then(function(){ toast('已删除'); loadJobs(); }).catch(function(e){ toast('失败: '+e.message); }); };
+
+  // ---- 快照差异 ----
+  function loadSnapshots(){
+    api('/api/snapshots').then(function(rows){
+      var v=$('#view-snapshots');
+      var opts='<option value="">(当前状态)</option>'+rows.map(function(r){return '<option value="'+r.id+'">#'+r.id+' '+esc(r.taken_at)+' ('+esc(r.source||'手动')+')</option>';}).join('');
+      var panel='<div class="panel"><div class="row" style="font-size:14px;font-weight:600">快照差异对比</div>'+
+        '<div class="row"><span class="muted">对比基准:</span><select id="snap-from">'+rows.map(function(r){return '<option value="'+r.id+'">#'+r.id+' '+esc(r.taken_at)+'</option>';}).join('')+'</select>'+
+        '<span class="muted">与:</span><select id="snap-to">'+opts+'</select>'+
+        '<button class="btn" onclick="doDiff()">对比</button></div><div id="diff-out"></div></div>';
+      v.innerHTML=panel;
+      $('#snapshots-empty-info')&&false;
+      if(!rows.length){ v.innerHTML='<div class="empty">暂无快照。运行 run 一键流水线或点概览页「保存快照」</div>'; }
+    }).catch(function(e){ $('#view-snapshots').innerHTML='<div class="empty">'+esc(e.message)+'</div>'; });
+  }
+
+  window.doDiff=function(){
+    var f=$('#snap-from').value, t=$('#snap-to').value;
+    api('/api/snapshot/diff?from='+f+(t?'&to='+t:'')).then(function(d){
+      var out=$('#diff-out'), h='<table><tr><th>类别</th><th>新增 ('+esc(d.to_time)+')</th><th>消失 ('+esc(d.from_time)+')</th></tr>';
+      ['hosts','services','fingerprints','matches'].forEach(function(k){
+        var diff=d.diff[k], add=diff.added.map(function(x){return '<div class="diff-add">+ '+esc(x.join(' · '))+'</div>';}).join('')||'<span class="muted">-</span>';
+        var rm=diff.removed.map(function(x){return '<div class="diff-rm">- '+esc(x.join(' · '))+'</div>';}).join('')||'<span class="muted">-</span>';
+        h+='<tr><td>'+k+'</td><td>'+add+'</td><td>'+rm+'</td></tr>';
+      });
+      h+='</table>';
+      out.innerHTML=h;
+    }).catch(function(e){ toast('对比失败: '+e.message); });
+  };
+
+  // ---- 操作 ----
+  window.genReport=function(){ api('/api/report','POST').then(function(r){ $('#op-msg').textContent='报告已生成: '+r.name; toast('报告已生成'); }).catch(function(e){ toast('失败: '+e.message); }); };
+  window.doExport=function(){ api('/api/export','POST').then(function(r){ $('#op-msg').textContent='已导出 '+r.paths.length+' 个 CSV 文件'; toast('导出完成'); }).catch(function(e){ toast('失败: '+e.message); }); };
+  window.saveSnapshot=function(){ api('/api/snapshot','POST').then(function(r){ $('#op-msg').textContent='已保存快照 #'+r.id; toast('快照已保存'); loadSnapshots(); }).catch(function(e){ toast('失败: '+e.message); }); };
+
+  // ---- 标签切换 ----
+  var loaders={overview:loadOverview, hosts:loadHosts, matches:loadMatches,
+    findings:loadFindings, checks:loadChecks, jobs:loadJobs, snapshots:loadSnapshots};
+  document.querySelectorAll('.tab').forEach(function(t){
+    t.addEventListener('click', function(){
+      document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');});
+      t.classList.add('active');
+      Object.keys(loaders).forEach(function(k){ $('#view-'+k).style.display = (k===t.dataset.tab)?'':'none'; });
+      loaders[t.dataset.tab]();
+    });
+  });
+
+  loadOverview();
+})();
+</script>
+</body>
+</html>

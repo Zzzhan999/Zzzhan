@@ -1,0 +1,35 @@
+[
+  {
+    "name": "每日核心资产扫描",
+    "targets": ["example.com", "203.0.113.10"],
+    "schedule": "0 2 * * *",
+    "ports": "80,443,8080,8443,22",
+    "timeout": 6.0,
+    "workers": 200,
+    "enabled": true,
+    "min_severity": "HIGH",
+    "notify_url": ""
+  },
+  {
+    "name": "每周全端口段扫描",
+    "targets": ["198.51.100.0/24"],
+    "schedule": "interval:168h",
+    "ports": "1-1024,3306,6379,5432,27017,9200",
+    "timeout": 8.0,
+    "workers": 200,
+    "enabled": false,
+    "min_severity": "HIGH",
+    "notify_url": ""
+  },
+  {
+    "name": "每6小时重点端口复查",
+    "targets": ["203.0.113.10"],
+    "schedule": "interval:6h",
+    "ports": "80,443,8080",
+    "timeout": 4.0,
+    "workers": 100,
+    "enabled": false,
+    "min_severity": "CRITICAL",
+    "notify_url": ""
+  }
+]

@@ -1,0 +1,35 @@
+# Agent2 服务器运营 —— Docker Compose
+# 用法：
+#   cd deploy
+#   docker compose up -d --build
+#
+# 目录约定（相对 deploy/ 上一级，即 agent2 根）：
+#   ./data        agent2 数据目录（assets.db/scope.json/jobs.json/报告/日志）—— 持久化
+#   漏洞库        agent1 的 vulns.db，通过环境变量 AGENT2_VULN_DB 指定挂载路径
+services:
+  agent2:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: agent2
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # agent2 数据持久化（assets.db / scope.json / jobs.json / reports / exports / logs）
+      - ./data:/app/data
+      # agent1 漏洞库只读挂载（按实际路径修改；也可改用镜像内路径）
+      - ../../data/vulns.db:/app/vulns.db:ro
+    environment:
+      # 认证 Token：必改！32+ 位随机串（openssl rand -hex 16）
+      AGENT2_TOKEN: "change-me-to-a-long-random-token"
+      # 漏洞库路径（容器内）
+      AGENT2_VULN_DB: "/app/vulns.db"
+      # 定时任务清单（挂载的 data 卷内，重启不丢失）
+      AGENT2_JOBS: "/app/data/jobs.json"
+      AGENT2_LOG_LEVEL: "info"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

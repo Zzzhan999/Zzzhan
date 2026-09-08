@@ -1,0 +1,40 @@
+# Agent2 systemd 服务单元（Ubuntu / Debian / CentOS 7+）
+# 安装：
+#   1. sudo cp agent2.service /etc/systemd/system/
+#   2. 按需修改 /etc/agent2/env 中的 AGENT2_TOKEN
+#   3. sudo systemctl daemon-reload && sudo systemctl enable --now agent2
+# 查看：sudo journalctl -u agent2 -f
+
+[Unit]
+Description=Agent2 Asset Discovery & Vulnerability Verification Service
+Documentation=file:///opt/agent2/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 建议用专用用户运行（install.sh 会自动创建）
+User=agent2
+Group=agent2
+WorkingDirectory=/opt/agent2
+# 环境变量文件：TOKEN / VULN_DB / LOG_LEVEL
+EnvironmentFile=-/etc/agent2/env
+ExecStart=/usr/bin/python3 /opt/agent2/main.py serve \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --token "${AGENT2_TOKEN}" \
+    --jobs /opt/agent2/data/jobs.json \
+    --vuln-db "${AGENT2_VULN_DB}" \
+    --log-dir /opt/agent2/data/logs \
+    --log-level "${AGENT2_LOG_LEVEL:-info}"
+Restart=always
+RestartSec=10
+# 加固
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/agent2/data
+
+[Install]
+WantedBy=multi-user.target

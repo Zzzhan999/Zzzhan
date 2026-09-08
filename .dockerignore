@@ -1,0 +1,9 @@
+# 排除本地数据与临时产物（data 由 volume 挂载）
+data/
+.tmp_doc/
+__pycache__/
+*.pyc
+tests/
+lab/
+.DS_Store
+.git/
